@@ -90,6 +90,27 @@ otelcol.processor.attributes "default" {
 }
 
 otelcol.exporter.loki "default" {
+  forward_to = [loki.process.otel.receiver]
+}
+
+loki.process "otel" {
+  stage.json {
+    expressions = {
+      "body" = "body",
+      "traceid" = "traceid",
+      "spanid" = "spanid",
+      "severity" = "severity",
+    }
+  }
+
+  stage.labels {
+    values = {
+      trace_id = "traceid",
+      span_id = "spanid",
+      severity = "severity",
+    }
+  }
+
   forward_to = [loki.write.default.receiver]
 }
 
