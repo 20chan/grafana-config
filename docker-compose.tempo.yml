@@ -1,0 +1,14 @@
+services:
+  tempo:
+    image: grafana/tempo:2.10.1
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./config/tempo.yml:/etc/tempo.yml
+      - ./data/tempo:/var/tempo
+    ports:
+      - "3200:3200"
+      - "9095:9095"
+    user: "0"
+    restart: always
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318

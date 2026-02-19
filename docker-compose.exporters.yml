@@ -1,0 +1,47 @@
+services:
+  node-exporter:
+    privileged: true
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: always
+    network_mode: host
+    pid: host
+    user: "0"
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - '--path.rootfs=/rootfs'
+      - "--collector.filesystem.ignored-mount-points"
+      - "^/(rootfs/)?(dev|etc|host|proc|run|sys|volume1)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  nginx-exporter:
+    image: quay.io/martinhelmich/prometheus-nginxlog-exporter
+    container_name: nginx-exporter
+    restart: always
+    user: "0"
+    ports:
+      - 4040:4040
+    volumes:
+      - /var/log/nginx:/var/log/nginx
+      - ./config/nginx.hcl:/etc/prometheus-nginxlog-exporter.hcl
+    entrypoint:
+      [
+        "/prometheus-nginxlog-exporter",
+        "-config-file",
+        "/etc/prometheus-nginxlog-exporter.hcl"
+      ]
+
+  process-exporter:
+    privileged: true
+    user: "0"
+    image: ncabatoff/process-exporter
+    ports:
+        - 9256:9256
+    volumes:
+        - /proc:/host/proc
+        - ./config/process-exporter.yml:/config/config.yml
+    command: --procfs /host/proc -config.path /config/config.yml

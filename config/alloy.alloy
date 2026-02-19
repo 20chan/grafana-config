@@ -1,0 +1,176 @@
+logging {
+  level = "info"
+  format = "logfmt"
+}
+
+livedebugging {
+  enabled = true
+}
+
+otelcol.receiver.otlp "default" {
+	grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+	http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+	output {
+		// metrics = [otelcol.processor.batch.default.input]
+    // logs = [otelcol.processor.batch.default.input]
+		// traces  = [otelcol.processor.batch.default.input, otelcol.connector.servicegraph.default.input]
+
+
+		// metrics = [otelcol.exporter.otlp.tempo.input]
+    logs = [otelcol.exporter.loki.default.input]
+		traces  = [otelcol.connector.spanlogs.default.input, otelcol.exporter.otlp.tempo.input, otelcol.connector.servicegraph.default.input]
+	}
+}
+
+/*
+otelcol.processor.batch "default" {
+	timeout             = "1s"
+	send_batch_size     = 8192
+	send_batch_max_size = 0
+
+	output {
+		metrics = [otelcol.exporter.otlp.tempo.input]
+    logs = [otelcol.processor.attributes.default.input]
+		traces  = [otelcol.connector.spanlogs.default.input, otelcol.exporter.otlp.tempo.input]
+	}
+}
+*/
+
+otelcol.connector.spanlogs "default" {
+  spans = true
+  roots = true
+  processes = true
+  events = true
+
+  span_attributes = ["http.method", "http.target", "http.status_code"]
+
+  output {
+    logs = [otelcol.processor.attributes.default.input]
+  }
+}
+
+otelcol.connector.servicegraph "default" {
+  output {
+    metrics = [otelcol.exporter.prometheus.default.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+      insecure_skip_verify = true
+		}
+	}
+}
+
+otelcol.processor.attributes "default" {
+  action {
+    key = "loki.attribute.labels"
+    action = "insert"
+    value = "event.domain, event.name"
+  }
+
+  action {
+    key = "loki.resource.labels"
+    action = "insert"
+    value = "service.name, service.namespace"
+  }
+
+  output {
+    logs = [otelcol.exporter.loki.default.input]
+  }
+}
+
+otelcol.exporter.loki "default" {
+  forward_to = [loki.write.default.receiver]
+}
+
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+loki.source.syslog "rsyslog" {
+  listener {
+    address = "0.0.0.0:51893"
+    labels = {
+      source = "rsyslog",
+      component = "loki.source.syslog",
+      protocol = "tcp",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+// docker metrics
+prometheus.exporter.cadvisor "docker" {
+  docker_host = "unix:///var/run/docker.sock"
+
+  storage_duration = "1m"
+}
+
+discovery.relabel "docker" {
+  targets = prometheus.exporter.cadvisor.docker.targets
+
+  rule {
+    target_label = "job"
+    replacement  = "integrations/docker"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+}
+
+prometheus.scrape "docker" {
+  targets = discovery.relabel.docker.output
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// docker logs
+discovery.docker "default" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "5s"
+}
+
+discovery.relabel "logs_integrations_docker" {
+	targets = []
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.source.docker "default" {
+	host             = "unix:///var/run/docker.sock"
+	targets          = discovery.docker.default.targets
+	forward_to       = [loki.write.default.receiver]
+	relabel_rules    = discovery.relabel.logs_integrations_docker.rules
+	refresh_interval = "5s"
+}
+
+loki.write "default" {
+	endpoint {
+		url       = "http://loki:3100/loki/api/v1/push"
+		tenant_id = "fake"
+    batch_wait = "1s"
+    batch_size = "1MB"
+	}
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

@@ -1,0 +1,87 @@
+include:
+  - docker-compose.exporters.yml
+  - docker-compose.tempo.yml
+  - docker-compose.loki.yml
+
+services:
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    volumes:
+      - ./config/alloy.alloy:/etc/alloy/config.alloy:ro
+      - ./data/alloy:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - 'run'
+      - '--server.http.listen-addr=0.0.0.0:12345'
+      - '--storage.path=/var/lib/alloy/data'
+      - '/etc/alloy/config.alloy'
+    ports:
+      - 12345:12345
+      - 51893:51893/tcp # rsyslog
+      - 4317:4317
+      - 4318:4318
+    restart: always
+    depends_on:
+      - loki
+      - tempo
+    user: "0"
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./data/prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+      - '--web.enable-admin-api'
+    ports:
+      - 9090:9090
+    restart: always
+    user: "0"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    volumes:
+      - ./config/alertmanager.yml:/etc/alertmanager/config.yml
+      - ./data/alertmanager:/data
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--log.level=debug'
+    ports:
+      - 9093:9093
+    restart: always
+    user: "0"
+
+  influxdb:
+    image: influxdb:latest
+    ports:
+      - 8086:8086
+    volumes:
+      - ./data/influxdb:/var/lib/influxdb
+    env_file: .env
+    restart: always
+    user: "0"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    env_file: .env
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./config/grafana.ini:/etc/grafana/grafana.ini
+    depends_on:
+      - influxdb
+    ports:
+      - 3000:3000
+    restart: always
+    user: "0"
