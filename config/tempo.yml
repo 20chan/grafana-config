@@ -7,7 +7,9 @@ server:
 
 query_frontend:
   search:
+    max_duration: 336h
     duration_slo: 5s
+    default_result_limit: 1000
   trace_by_id:
     duration_slo: 5s
 
