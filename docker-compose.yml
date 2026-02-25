@@ -11,6 +11,8 @@ services:
       - ./config/alloy.alloy:/etc/alloy/config.alloy:ro
       - ./data/alloy:/var/lib/alloy/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/log:/var/log:ro
+      - ./etc/GeoLite2-City.mmdb:/GeoLite2-City.mmdb
     command:
       - 'run'
       - '--server.http.listen-addr=0.0.0.0:12345'

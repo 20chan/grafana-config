@@ -7,6 +7,7 @@ livedebugging {
   enabled = true
 }
 
+// otel
 otelcol.receiver.otlp "default" {
 	grpc {
     endpoint = "0.0.0.0:4317"
@@ -128,6 +129,91 @@ loki.source.syslog "rsyslog" {
   }
 
   forward_to = [loki.write.default.receiver]
+}
+
+// fail2ban logs
+local.file_match "fail2ban" {
+  path_targets = [{
+    __address__ = "localhost",
+    __path__ = "/var/log/fail2ban.log",
+    job = "fail2ban",
+  }]
+}
+
+loki.process "fail2ban" {
+  stage.multiline {
+    firstline = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
+    max_wait_time = "10s"
+  }
+
+  stage.regex {
+    expression = "^(?s)(?P<time>\\S+? \\S+?) (fail2ban\\.)(?P<component>\\S+)\\s* \\[(?P<pid>\\S+)\\]: (?P<priority>\\S+)\\s* (?P<message>.*?)$"
+  }
+
+  stage.timestamp {
+    source = "time"
+    format = "2006-01-02 15:04:05,000"
+    location = "Local"
+  }
+
+  stage.output {
+    source = "message"
+  }
+
+  stage.match {
+    selector = "{job=\"fail2ban\"} |~ \"\\\\\\\\[\\\\\\\\S+\\\\\\\\] .*\""
+
+    stage.regex {
+      expression = "(\\[(?P<jail>\\S+)\\] )?(?P<message>.*?)$"
+    }
+
+    stage.labels {
+      values = {
+        jail = null,
+      }
+    }
+
+    stage.output {
+      source = "message"
+    }
+  }
+
+  stage.regex {
+    expression = ".*?(?P<remote_addr>\\d+\\.\\d+\\.\\d+\\.\\d+).*"
+  }
+
+  stage.geoip {
+    db      = "/GeoLite2-City.mmdb"
+    source  = "remote_addr"
+    db_type = "city"
+  }
+
+  stage.labels {
+    values = {
+      geoip_city_name          = "",
+      geoip_country_name       = "",
+      geoip_country_code       = "",
+      geoip_continent_name     = "",
+      geoip_continent_code     = "",
+      geoip_location_latitude  = "",
+      geoip_location_longitude = "",
+      geoip_postal_code        = "",
+      geoip_timezone           = "",
+      geoip_subdivision_name   = "",
+      geoip_subdivision_code   = "",
+    }
+  }
+
+  stage.label_drop {
+    values = ["filename"]
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.source.file "fail2ban" {
+  targets = local.file_match.fail2ban.targets
+  forward_to = [loki.process.fail2ban.receiver]
 }
 
 // docker metrics
