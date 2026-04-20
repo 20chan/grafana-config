@@ -10,5 +10,5 @@ services:
       - "9095:9095"
     user: "0"
     restart: always
-    environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
+    #environment:
+    #  - OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
